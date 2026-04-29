@@ -1,3 +1,5 @@
+const SIA_STORAGE_INDEXD_API = 'https://app.sia.storage'
+
 const root = document.getElementById('root')
 
 if (!root) {
@@ -11,7 +13,15 @@ root.innerHTML = `
       <h1 style="font-size:72px;line-height:1;margin:0 0 12px;">Stache</h1>
       <p style="font-size:24px;margin:0 0 32px;">Stache that file.</p>
 
-      <label id="dropzone" style="display:block;border:3px dashed #171717;border-radius:28px;background:white;padding:56px 28px;cursor:pointer;box-shadow:0 24px 80px rgba(0,0,0,.08);">
+      <div style="margin:0 auto 24px;padding:16px;border:1px solid #e0d7c6;border-radius:20px;background:#fffaf0;max-width:520px;">
+        <div style="font-weight:800;margin-bottom:6px;">Indexer</div>
+        <div style="color:#5f5749;font-size:14px;">Using the Foundation indexer at <code>${SIA_STORAGE_INDEXD_API}</code></div>
+        <button id="connectButton" style="margin-top:12px;border:1px solid #171717;border-radius:999px;background:white;color:#171717;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;">
+          Connect Sia Storage
+        </button>
+      </div>
+
+      <label id="dropzone" style="display:block;border:3px dashed #171717;border-radius:28px;background:white;padding:56px 28px;cursor:pointer;box-shadow:0 24px 80px rgba(0,0,0,.08);transition:transform .15s ease;">
         <input id="fileInput" type="file" style="display:none" />
         <div style="font-size:64px;margin-bottom:16px;">▣</div>
         <h2 style="margin:0 0 8px;font-size:28px;">Drop a file here</h2>
@@ -32,6 +42,7 @@ const fileName = document.getElementById('fileName') as HTMLParagraphElement
 const uploadButton = document.getElementById('uploadButton') as HTMLButtonElement
 const status = document.getElementById('status') as HTMLDivElement
 const dropzone = document.getElementById('dropzone') as HTMLLabelElement
+const connectButton = document.getElementById('connectButton') as HTMLButtonElement
 
 let selectedFile: File | null = null
 
@@ -41,6 +52,44 @@ function setFile(file: File | null) {
   uploadButton.disabled = !file
   uploadButton.style.opacity = file ? '1' : '.45'
 }
+
+connectButton.addEventListener('click', async () => {
+  status.innerHTML = '<div style="font-weight:700;">Starting Sia Storage connection...</div>'
+
+  try {
+    const response = await fetch(`${SIA_STORAGE_INDEXD_API}/auth/connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Stache',
+        description: 'Upload a file to Sia and get a shareable browser link.',
+        logoURL: `${window.location.origin}/favicon.ico`,
+        serviceURL: window.location.origin,
+        callbackURL: `${window.location.origin}/`,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Connection failed: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json() as { responseURL?: string; statusURL?: string; expiration?: string }
+    localStorage.setItem('stache:indexdConnectStatusURL', data.statusURL ?? '')
+
+    if (data.responseURL) {
+      window.location.href = data.responseURL
+      return
+    }
+
+    status.innerHTML = '<div>Connected request created, but no approval URL was returned.</div>'
+  } catch (error) {
+    status.innerHTML = `
+      <div style="font-weight:800;margin-bottom:8px;">Could not start Sia Storage connection yet.</div>
+      <div style="color:#666;max-width:520px;margin:0 auto;">${error instanceof Error ? error.message : 'Unknown error'}</div>
+      <div style="color:#666;margin-top:8px;">Upload still runs in mock mode until the app connection flow is finalized.</div>
+    `
+  }
+})
 
 fileInput.addEventListener('change', () => setFile(fileInput.files?.[0] ?? null))
 
@@ -83,7 +132,7 @@ uploadButton.addEventListener('click', () => {
       status.innerHTML = `
         <div style="font-weight:800;font-size:22px;margin-bottom:8px;">Your file is stached.</div>
         <a href="${url}" style="color:#171717;word-break:break-all;">${url}</a>
-        <div style="margin-top:16px;color:#666;">Mock upload complete. Real indexd wiring comes next.</div>
+        <div style="margin-top:16px;color:#666;">Mock upload complete. Real indexd upload comes after Sia Storage app connection is approved.</div>
       `
     }
   }, 180)
