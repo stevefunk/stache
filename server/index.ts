@@ -8,24 +8,34 @@ const upload = multer()
 app.use(cors())
 app.use(express.json())
 
-// health
 app.get('/', (_req, res) => {
   res.json({ ok: true })
 })
 
-// upload endpoint (stub for now)
 app.post('/upload', upload.single('file'), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file' })
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' })
+    }
+
+    const file = req.file
+
+    // READY FOR REAL SDK
+    // Replace this with @siafoundation/sia-storage
+    // Example shape:
+    // const client = new SiaStorage(...)
+    // const result = await client.upload(file.buffer)
+
+    const id = Math.random().toString(36).slice(2)
+
+    return res.json({
+      id,
+      url: `http://localhost:5173/file/${id}`,
+    })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Upload failed' })
   }
-
-  // TODO: replace with real indexd upload
-  const id = Math.random().toString(36).slice(2)
-
-  res.json({
-    id,
-    url: `http://localhost:5173/file/${id}`,
-  })
 })
 
 const PORT = 3001
