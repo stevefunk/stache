@@ -1,4 +1,4 @@
-const SIA_STORAGE_INDEXD_API = 'https://app.sia.storage'
+const SIA_STORAGE_URL = 'https://sia.storage'
 
 const root = document.getElementById('root')
 
@@ -14,10 +14,10 @@ root.innerHTML = `
       <p style="font-size:24px;margin:0 0 32px;">Stache that file.</p>
 
       <div style="margin:0 auto 24px;padding:16px;border:1px solid #e0d7c6;border-radius:20px;background:#fffaf0;max-width:520px;">
-        <div style="font-weight:800;margin-bottom:6px;">Indexer</div>
-        <div style="color:#5f5749;font-size:14px;">Using the Foundation indexer at <code>${SIA_STORAGE_INDEXD_API}</code></div>
+        <div style="font-weight:800;margin-bottom:6px;">Sia Storage</div>
+        <div style="color:#5f5749;font-size:14px;">Foundation-hosted indexd target: <code>${SIA_STORAGE_URL}</code></div>
         <button id="connectButton" style="margin-top:12px;border:1px solid #171717;border-radius:999px;background:white;color:#171717;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;">
-          Connect Sia Storage
+          Open Sia Storage
         </button>
       </div>
 
@@ -53,42 +53,9 @@ function setFile(file: File | null) {
   uploadButton.style.opacity = file ? '1' : '.45'
 }
 
-connectButton.addEventListener('click', async () => {
-  status.innerHTML = '<div style="font-weight:700;">Starting Sia Storage connection...</div>'
-
-  try {
-    const response = await fetch(`${SIA_STORAGE_INDEXD_API}/auth/connect`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Stache',
-        description: 'Upload a file to Sia and get a shareable browser link.',
-        logoURL: `${window.location.origin}/favicon.ico`,
-        serviceURL: window.location.origin,
-        callbackURL: `${window.location.origin}/`,
-      }),
-    })
-
-    if (!response.ok) {
-      throw new Error(`Connection failed: ${response.status} ${response.statusText}`)
-    }
-
-    const data = await response.json() as { responseURL?: string; statusURL?: string; expiration?: string }
-    localStorage.setItem('stache:indexdConnectStatusURL', data.statusURL ?? '')
-
-    if (data.responseURL) {
-      window.location.href = data.responseURL
-      return
-    }
-
-    status.innerHTML = '<div>Connected request created, but no approval URL was returned.</div>'
-  } catch (error) {
-    status.innerHTML = `
-      <div style="font-weight:800;margin-bottom:8px;">Could not start Sia Storage connection yet.</div>
-      <div style="color:#666;max-width:520px;margin:0 auto;">${error instanceof Error ? error.message : 'Unknown error'}</div>
-      <div style="color:#666;margin-top:8px;">Upload still runs in mock mode until the app connection flow is finalized.</div>
-    `
-  }
+connectButton.addEventListener('click', () => {
+  window.open(SIA_STORAGE_URL, '_blank', 'noopener,noreferrer')
+  status.innerHTML = '<div style="font-weight:700;">Opened Sia Storage. Stache upload is still mocked until we add the real app auth/upload backend.</div>'
 })
 
 fileInput.addEventListener('change', () => setFile(fileInput.files?.[0] ?? null))
@@ -132,7 +99,7 @@ uploadButton.addEventListener('click', () => {
       status.innerHTML = `
         <div style="font-weight:800;font-size:22px;margin-bottom:8px;">Your file is stached.</div>
         <a href="${url}" style="color:#171717;word-break:break-all;">${url}</a>
-        <div style="margin-top:16px;color:#666;">Mock upload complete. Real indexd upload comes after Sia Storage app connection is approved.</div>
+        <div style="margin-top:16px;color:#666;">Mock upload complete. Real indexd upload needs a backend/app-auth bridge.</div>
       `
     }
   }, 180)
