@@ -9,9 +9,10 @@
     "dev:api": "tsx server/index.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node dist-server/index.js"
+    "start": "tsx server/index.ts"
   },
   "dependencies": {
+    "@siafoundation/sia-storage": "^0.0.9",
     "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^8.2.2",
     "cors": "^2.8.5",
