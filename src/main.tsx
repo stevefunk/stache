@@ -116,7 +116,7 @@ dropzone.addEventListener('drop', event => {
     const { PinnedObject } = await import('@siafoundation/sia-storage')
 
     show('Staching your file...')
-    const obj = await sdk.upload(new PinnedObject(), selectedFile.stream(), { maxInflight: 10 })
+    const obj = await sdk.upload(new PinnedObject(), selectedFile.stream(), { maxInflight: 1 })
     await sdk.pinObject(obj)
     const url = await sdk.shareObject(obj, Date.now() + 1000 * 60 * 60 * 24 * 365)
 
