@@ -6,6 +6,9 @@ const STACHE_APP_ID = '737461636865000000000000000000000000000000000000000000000
 root.innerHTML = `
   <main style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#faf7ef;color:#171717;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px;">
     <section style="width:min(760px,100%);text-align:center;">
+
+      <div style="font-size:64px;margin-bottom:12px;">🧔‍♂️</div>
+
       <p style="letter-spacing:.18em;text-transform:uppercase;font-size:12px;margin:0 0 16px;color:#6b6255;">Powered by Sia Storage</p>
       <h1 style="font-size:72px;line-height:1;margin:0 0 12px;">Stache</h1>
       <p style="font-size:24px;margin:0 0 32px;color:#3d352c;">Stache that file.</p>
@@ -38,6 +41,7 @@ const fileInput = document.getElementById('file') as HTMLInputElement
 const fileName = document.getElementById('fileName')!
 const uploadButton = document.getElementById('upload') as HTMLButtonElement
 const dropzone = document.getElementById('dropzone')!
+const connectButton = document.getElementById('connect') as HTMLButtonElement
 
 function show(message: string) {
   status.innerHTML = `<div style="font-weight:700;">${message}</div>`
@@ -72,7 +76,7 @@ dropzone.addEventListener('drop', event => {
   setFile(event.dataTransfer?.files?.[0] ?? null)
 })
 
-;(document.getElementById('connect') as HTMLElement).onclick = async () => {
+connectButton.onclick = async () => {
   try {
     show('Loading Sia SDK...')
     const { initSia, Builder, generateRecoveryPhrase } = await import('@siafoundation/sia-storage')
@@ -90,14 +94,16 @@ dropzone.addEventListener('drop', event => {
     await builder.requestConnection()
 
     const approvalUrl = builder.responseUrl()
-    status.innerHTML = `<div style="font-weight:700;margin-bottom:8px;">Approve Stache in the new tab.</div><a href="${approvalUrl}" target="_blank" rel="noreferrer">Open approval page</a>`
     window.open(approvalUrl, '_blank', 'noopener,noreferrer')
 
     await builder.waitForApproval()
 
-    show('Registering app...')
     const phrase = generateRecoveryPhrase()
     sdk = await builder.register(phrase)
+
+    connectButton.textContent = 'Connected to sia.storage'
+    connectButton.style.background = '#171717'
+    connectButton.style.color = 'white'
 
     show('Connected. Pick a file and stache it.')
   } catch (error) {
@@ -105,7 +111,7 @@ dropzone.addEventListener('drop', event => {
   }
 }
 
-;(document.getElementById('upload') as HTMLElement).onclick = async () => {
+(document.getElementById('upload') as HTMLElement).onclick = async () => {
   try {
     if (!sdk) {
       show('Connect Sia Storage first.')
