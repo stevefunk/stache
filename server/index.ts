@@ -35,7 +35,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'No file uploaded' })
     }
 
-    const appKeyHex = req.body.appKey
+    const appKeyHex = req.body.session || req.body.appKey
     if (!appKeyHex) {
       return res.status(400).json({ error: 'Missing app key' })
     }
