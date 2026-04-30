@@ -62,8 +62,8 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 
     await sdk.pinObject(object)
 
-    const oneYear = Date.now() + 1000 * 60 * 60 * 24 * 365
-    const url = await sdk.shareObject(object, oneYear)
+    const oneYearFromNow = new Date(Date.now() + 1000 * 60 * 60 * 24 * 365)
+    const url = await sdk.shareObject(object, oneYearFromNow)
 
     return res.json({
       id: object.id().toString(),
