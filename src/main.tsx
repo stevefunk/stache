@@ -59,6 +59,42 @@ function setFile(file: File | null) {
   uploadButton.style.opacity = file ? '1' : '.45'
 }
 
+async function getUploadDiagnostics() {
+  const diagnostics: string[] = []
+
+  try {
+    const hosts = await sdk.hosts()
+    const goodHosts = Array.isArray(hosts) ? hosts.filter((host: any) => host.goodForUpload || host.good_for_upload) : []
+    diagnostics.push(`${goodHosts.length}/${Array.isArray(hosts) ? hosts.length : 0} hosts good for upload`)
+
+    if (goodHosts.length === 0) {
+      throw new Error(`No storage hosts are currently marked good for upload by sia.storage (${diagnostics.join(', ')}).`)
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('No storage hosts')) throw error
+    diagnostics.push(`host check failed: ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  try {
+    const account = await sdk.account()
+    diagnostics.push(`account: ${JSON.stringify(account)}`)
+  } catch (error) {
+    diagnostics.push(`account check failed: ${error instanceof Error ? error.message : String(error)}`)
+  }
+
+  return diagnostics
+}
+
+function formatUploadError(error: unknown, diagnostics: string[]) {
+  const message = error instanceof Error ? error.message : String(error)
+
+  if (message.includes('no more hosts available')) {
+    return `sia.storage has no usable upload hosts for this account right now. ${diagnostics.join(' | ')}`
+  }
+
+  return `${message}${diagnostics.length ? ` (${diagnostics.join(' | ')})` : ''}`
+}
+
 fileInput.addEventListener('change', () => setFile(fileInput.files?.[0] ?? null))
 
 dropzone.addEventListener('dragover', event => {
@@ -112,6 +148,8 @@ connectButton.onclick = async () => {
 }
 
 (document.getElementById('upload') as HTMLElement).onclick = async () => {
+  let diagnostics: string[] = []
+
   try {
     if (!sdk) {
       show('Connect Sia Storage first.')
@@ -121,6 +159,9 @@ connectButton.onclick = async () => {
 
     const { PinnedObject } = await import('@siafoundation/sia-storage')
 
+    show('Checking sia.storage upload hosts...')
+    diagnostics = await getUploadDiagnostics()
+
     show('Staching your file...')
     const obj = await sdk.upload(new PinnedObject(), selectedFile.stream(), { maxInflight: 1 })
     await sdk.pinObject(obj)
@@ -128,6 +169,6 @@ connectButton.onclick = async () => {
 
     status.innerHTML = `<div style="font-weight:800;font-size:22px;margin-bottom:8px;">Your file is stached.</div><a href="${url}" target="_blank" rel="noreferrer" style="color:#171717;word-break:break-all;">${url}</a>`
   } catch (error) {
-    showError(error)
+    showError(formatUploadError(error, diagnostics))
   }
 }
