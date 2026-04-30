@@ -1,14 +1,22 @@
+import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import multer from 'multer'
 import { Readable } from 'node:stream'
 import { initSia, Builder, AppKey, PinnedObject } from '@siafoundation/sia-storage'
 
-const INDEXER_URL = 'https://sia.storage'
-const STACHE_APP_ID = '7374616368650000000000000000000000000000000000000000000000000000'
+const INDEXER_URL = process.env.STACHE_INDEXER_URL || 'https://sia.storage'
+const STACHE_APP_ID = process.env.STACHE_APP_ID || '7374616368650000000000000000000000000000000000000000000000000000'
+const STACHE_APP_KEY = process.env.STACHE_APP_KEY
+const MAX_FILE_SIZE_MB = Number(process.env.MAX_FILE_SIZE_MB || 50)
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 const app = express()
-const upload = multer()
+const upload = multer({
+  limits: {
+    fileSize: MAX_FILE_SIZE_BYTES,
+  },
+})
 
 app.use(cors())
 app.use(express.json())
@@ -16,7 +24,7 @@ app.use(express.json())
 function hexToBytes(hex: string) {
   const clean = hex.trim().toLowerCase()
   if (!/^[0-9a-f]+$/.test(clean) || clean.length !== 64) {
-    throw new Error('Invalid app key')
+    throw new Error('Invalid STACHE_APP_KEY')
   }
   return Uint8Array.from(clean.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)))
 }
@@ -25,8 +33,29 @@ function nodeReadableToWeb(readable: Readable) {
   return Readable.toWeb(readable) as unknown as ReadableStream<Uint8Array>
 }
 
+async function getSdk() {
+  if (!STACHE_APP_KEY) {
+    throw new Error('Server missing STACHE_APP_KEY. Add it to .env before uploading.')
+  }
+
+  await initSia()
+
+  const sdk = await new Builder(INDEXER_URL, {
+    id: Buffer.from(STACHE_APP_ID, 'hex'),
+    name: 'Stache',
+    description: 'Stache that file',
+    serviceUrl: process.env.STACHE_SERVICE_URL || 'http://localhost:5173',
+  }).connected(new AppKey(hexToBytes(STACHE_APP_KEY)))
+
+  if (!sdk) {
+    throw new Error('Could not reconnect Stache to Sia Storage. Check STACHE_APP_KEY.')
+  }
+
+  return sdk
+}
+
 app.get('/', (_req, res) => {
-  res.json({ ok: true })
+  res.json({ ok: true, maxFileSizeMB: MAX_FILE_SIZE_MB })
 })
 
 app.post('/upload', upload.single('file'), async (req, res) => {
@@ -35,25 +64,9 @@ app.post('/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'No file uploaded' })
     }
 
-    const appKeyHex = req.body.session || req.body.appKey
-    if (!appKeyHex) {
-      return res.status(400).json({ error: 'Missing app key' })
-    }
-
-    await initSia()
-
-    const sdk = await new Builder(INDEXER_URL, {
-      id: Buffer.from(STACHE_APP_ID, 'hex'),
-      name: 'Stache',
-      description: 'Stache that file',
-      serviceUrl: 'http://localhost:5173',
-    }).connected(new AppKey(hexToBytes(appKeyHex)))
-
-    if (!sdk) {
-      return res.status(401).json({ error: 'Could not reconnect to Sia Storage' })
-    }
-
+    const sdk = await getSdk()
     const stream = nodeReadableToWeb(Readable.from(req.file.buffer))
+
     const object = await sdk.upload(new PinnedObject(), stream, {
       maxInflight: 15,
       dataShards: 10,
@@ -76,7 +89,16 @@ app.post('/upload', upload.single('file'), async (req, res) => {
   }
 })
 
-const PORT = 3001
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: `File is too large. Max size is ${MAX_FILE_SIZE_MB} MB.` })
+  }
+
+  const message = err instanceof Error ? err.message : 'Server error'
+  res.status(500).json({ error: message })
+})
+
+const PORT = Number(process.env.PORT || 3001)
 app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`)
 })
