@@ -7,7 +7,7 @@ root.innerHTML = `
   <main style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#faf7ef;color:#171717;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px;">
     <section style="width:min(760px,100%);text-align:center;">
 
-      <div style="font-size:64px;margin-bottom:12px;">🧔‍♂️</div>
+      <img src="/mustache.png" alt="Stache mustache" style="display:block;width:260px;max-width:70%;height:auto;margin:0 auto 12px;" />
 
       <p style="letter-spacing:.18em;text-transform:uppercase;font-size:12px;margin:0 0 16px;color:#6b6255;">Powered by Sia Storage</p>
       <h1 style="font-size:72px;line-height:1;margin:0 0 12px;">Stache</h1>
