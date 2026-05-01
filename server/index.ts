@@ -3,7 +3,7 @@ import express from 'express'
 import cors from 'cors'
 import multer from 'multer'
 import { Readable } from 'node:stream'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { initSia, Builder, AppKey, PinnedObject, generateRecoveryPhrase } from '@siafoundation/sia-storage'
@@ -11,11 +11,14 @@ import { initSia, Builder, AppKey, PinnedObject, generateRecoveryPhrase } from '
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const DIST_DIR = path.resolve(__dirname, '../dist')
+const DATA_DIR = process.env.STACHE_DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || process.cwd()
+
+if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true })
 
 const INDEXER_URL = process.env.STACHE_INDEXER_URL || 'https://sia.storage'
 const STACHE_APP_ID = process.env.STACHE_APP_ID || '7374616368650000000000000000000000000000000000000000000000000000'
-const KEY_FILE = process.env.STACHE_KEY_FILE || './stache-key.json'
-const FILES_FILE = process.env.STACHE_FILES_FILE || './stache-files.json'
+const KEY_FILE = process.env.STACHE_KEY_FILE || path.join(DATA_DIR, 'stache-key.json')
+const FILES_FILE = process.env.STACHE_FILES_FILE || path.join(DATA_DIR, 'stache-files.json')
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'http://localhost:3001'
 const MAX_FILE_SIZE_MB = Number(process.env.MAX_FILE_SIZE_MB || 50)
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
@@ -145,7 +148,7 @@ async function streamToResponse(stream: ReadableStream<Uint8Array>, res: express
 }
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, configured: Boolean(readStoredKey()), maxFileSizeMB: MAX_FILE_SIZE_MB })
+  res.json({ ok: true, configured: Boolean(readStoredKey()), maxFileSizeMB: MAX_FILE_SIZE_MB, dataDir: DATA_DIR })
 })
 
 app.get('/setup', async (_req, res) => {
@@ -232,5 +235,6 @@ if (existsSync(DIST_DIR)) {
 const PORT = Number(process.env.PORT || 3001)
 app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`)
+  console.log(`Stache data dir: ${DATA_DIR}`)
   if (!readStoredKey()) console.log(`One-time Stache owner setup: http://localhost:${PORT}/setup`)
 })
