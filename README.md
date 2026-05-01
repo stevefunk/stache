@@ -1,4 +1,4 @@
-<img width="794" height="568" alt="1*FgFBTNtiPZuH_tg3wOQ4CQ" src="https://github.com/user-attachments/assets/19c165b8-0f6f-43d9-a736-efbac6c94561" />
+<img width="529" height="379" alt="1*FgFBTNtiPZuH_tg3wOQ4CQ" src="https://github.com/user-attachments/assets/19c165b8-0f6f-43d9-a736-efbac6c94561" />
 
 https://stache-production.up.railway.app
 
