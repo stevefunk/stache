@@ -1,4 +1,6 @@
-[i guess bro](https://stache-production.up.railway.app)
+<img width="794" height="568" alt="1*FgFBTNtiPZuH_tg3wOQ4CQ" src="https://github.com/user-attachments/assets/19c165b8-0f6f-43d9-a736-efbac6c94561" />
+
+https://stache-production.up.railway.app
 
 looks like it exists, uploads, might use sia (i have no clue), and makes links. Viewing the file takes forever/doesn't work since for some reason it's coming from stachethatfile.com. If you apend the share link gibberish to the railway url it actually works but the site isn't doing that automatically.
 
