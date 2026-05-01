@@ -9,8 +9,19 @@ import { initSia, Builder, AppKey, PinnedObject, generateRecoveryPhrase } from '
 const INDEXER_URL = process.env.STACHE_INDEXER_URL || 'https://sia.storage'
 const STACHE_APP_ID = process.env.STACHE_APP_ID || '7374616368650000000000000000000000000000000000000000000000000000'
 const KEY_FILE = process.env.STACHE_KEY_FILE || './stache-key.json'
+const FILES_FILE = process.env.STACHE_FILES_FILE || './stache-files.json'
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || 'http://localhost:3001'
 const MAX_FILE_SIZE_MB = Number(process.env.MAX_FILE_SIZE_MB || 50)
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
+type StachedFile = {
+  id: string
+  name: string
+  type: string
+  size: number
+  siaUrl: string
+  createdAt: string
+}
 
 const app = express()
 const upload = multer({ limits: { fileSize: MAX_FILE_SIZE_BYTES } })
@@ -42,6 +53,25 @@ function writeStoredKey(appKey: string) {
   writeFileSync(KEY_FILE, JSON.stringify({ appKey }, null, 2))
 }
 
+function readFiles(): Record<string, StachedFile> {
+  if (!existsSync(FILES_FILE)) return {}
+  return JSON.parse(readFileSync(FILES_FILE, 'utf8'))
+}
+
+function writeFiles(files: Record<string, StachedFile>) {
+  writeFileSync(FILES_FILE, JSON.stringify(files, null, 2))
+}
+
+function saveFile(file: StachedFile) {
+  const files = readFiles()
+  files[file.id] = file
+  writeFiles(files)
+}
+
+function getFile(id: string) {
+  return readFiles()[id] || null
+}
+
 function nodeReadableToWeb(readable: Readable) {
   return Readable.toWeb(readable) as unknown as ReadableStream<Uint8Array>
 }
@@ -56,7 +86,7 @@ function appMeta() {
 }
 
 function page(body: string) {
-  return `<!doctype html><html><head><title>Stache Setup</title><meta name="viewport" content="width=device-width, initial-scale=1" /></head><body style="font-family:system-ui,sans-serif;max-width:720px;margin:64px auto;padding:24px;background:#faf7ef;color:#171717;"><h1>Stache setup</h1>${body}</body></html>`
+  return `<!doctype html><html><head><title>Stache</title><meta name="viewport" content="width=device-width, initial-scale=1" /></head><body style="font-family:system-ui,sans-serif;max-width:720px;margin:64px auto;padding:24px;background:#faf7ef;color:#171717;"><h1>Stache</h1>${body}</body></html>`
 }
 
 function button(href: string, text: string, dark = false) {
@@ -94,15 +124,27 @@ async function getSdk() {
   return sdk
 }
 
+async function streamToResponse(stream: ReadableStream<Uint8Array>, res: express.Response) {
+  const reader = stream.getReader()
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      res.write(Buffer.from(value))
+    }
+    res.end()
+  } catch (error) {
+    res.destroy(error instanceof Error ? error : new Error(String(error)))
+  }
+}
+
 app.get('/', (_req, res) => {
   res.json({ ok: true, configured: Boolean(readStoredKey()), maxFileSizeMB: MAX_FILE_SIZE_MB })
 })
 
 app.get('/setup', async (_req, res) => {
   try {
-    if (readStoredKey()) {
-      return res.send(page(`<p>Stache is already configured.</p>${button('http://localhost:5173', 'Open Stache', true)}`))
-    }
+    if (readStoredKey()) return res.send(page(`<p>Stache is already configured.</p>${button('http://localhost:5173', 'Open Stache', true)}`))
     const approvalUrl = await ensureSetupStarted()
     res.send(page(`<p>1. Click approve. Sia Storage opens in a new page.</p><p>${button(approvalUrl, 'Approve Stache', true)}</p><p>2. After approval, come back here and click finish.</p><p>${button('/setup/finish', 'Finish setup')}</p><p style="color:#6b6255;">No copying or pasting needed.</p>`))
   } catch (err) {
@@ -136,12 +178,37 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     const stream = nodeReadableToWeb(Readable.from(req.file.buffer))
     const object = await sdk.upload(new PinnedObject(), stream, { maxInflight: 15, dataShards: 10, parityShards: 20 })
     await sdk.pinObject(object)
-    const url = await sdk.shareObject(object, new Date(Date.now() + 1000 * 60 * 60 * 24 * 365))
-    return res.json({ id: object.id().toString(), url: url.toString() })
+    const siaUrl = await sdk.shareObject(object, new Date(Date.now() + 1000 * 60 * 60 * 24 * 365))
+    const id = object.id().toString()
+    saveFile({ id, name: req.file.originalname || 'stached-file', type: req.file.mimetype || 'application/octet-stream', size: req.file.size, siaUrl: siaUrl.toString(), createdAt: new Date().toISOString() })
+    return res.json({ id, url: `${PUBLIC_BASE_URL}/f/${id}` })
   } catch (err) {
     console.error(err)
     const message = err instanceof Error ? err.message : 'Upload failed'
     res.status(500).json({ error: message })
+  }
+})
+
+app.get('/f/:id', (req, res) => {
+  const file = getFile(req.params.id)
+  if (!file) return res.status(404).send(page('<p>File not found.</p>'))
+  res.send(page(`<p><strong>${file.name}</strong></p><p>${Math.round(file.size / 1024)} KB</p>${button(`/download/${file.id}`, 'Open / download file', true)}<p style="color:#6b6255;">This Stache link works in any normal web browser.</p>`))
+})
+
+app.get('/download/:id', async (req, res) => {
+  try {
+    const file = getFile(req.params.id)
+    if (!file) return res.status(404).send('File not found')
+    const sdk = await getSdk()
+    const object = await sdk.sharedObject(file.siaUrl)
+    const stream = await sdk.download(object)
+    res.setHeader('Content-Type', file.type)
+    res.setHeader('Content-Disposition', `inline; filename="${file.name.replace(/"/g, '')}"`)
+    await streamToResponse(stream, res)
+  } catch (err) {
+    console.error(err)
+    const message = err instanceof Error ? err.message : 'Download failed'
+    res.status(500).send(message)
   }
 })
 
