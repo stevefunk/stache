@@ -1,5 +1,7 @@
 [i guess bro](https://stache-production.up.railway.app)
 
+looks like it exists, uploads, might use sia (i have no clue), and makes links. Viewing the file takes forever/doesn't work. everything below is whatever crap chatgpt wrote, and that was before i started getting into railway and got it up online or something. stachethatfile.com may also work at some point if the cname kicks in, i don't want that's all doing
+
 # Stache
 
 **Stache that file.**
