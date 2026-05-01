@@ -20,10 +20,7 @@ const MAX_FILE_SIZE_MB = Number(process.env.MAX_FILE_SIZE_MB || 50)
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 const pool = process.env.DATABASE_URL
-  ? new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL.includes('railway') ? { rejectUnauthorized: false } : undefined,
-    })
+  ? new Pool({ connectionString: process.env.DATABASE_URL })
   : null
 
 type StachedFile = {
