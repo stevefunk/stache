@@ -4,7 +4,13 @@ import cors from 'cors'
 import multer from 'multer'
 import { Readable } from 'node:stream'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { initSia, Builder, AppKey, PinnedObject, generateRecoveryPhrase } from '@siafoundation/sia-storage'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const DIST_DIR = path.resolve(__dirname, '../dist')
 
 const INDEXER_URL = process.env.STACHE_INDEXER_URL || 'https://sia.storage'
 const STACHE_APP_ID = process.env.STACHE_APP_ID || '7374616368650000000000000000000000000000000000000000000000000000'
@@ -81,7 +87,7 @@ function appMeta() {
     id: Buffer.from(STACHE_APP_ID, 'hex'),
     name: 'Stache',
     description: 'Stache that file',
-    serviceUrl: process.env.STACHE_SERVICE_URL || 'http://localhost:5173',
+    serviceUrl: process.env.STACHE_SERVICE_URL || PUBLIC_BASE_URL,
   }
 }
 
@@ -116,7 +122,7 @@ async function finishSetup() {
 async function getSdk() {
   if (cachedSdk) return cachedSdk
   const appKey = readStoredKey()
-  if (!appKey) throw new Error('Stache needs one-time owner setup. Visit http://localhost:3001/setup first.')
+  if (!appKey) throw new Error('Stache needs one-time owner setup. Visit /setup first.')
   await initSia()
   const sdk = await new Builder(INDEXER_URL, appMeta()).connected(new AppKey(hexToBytes(appKey)))
   if (!sdk) throw new Error('Could not reconnect Stache to Sia Storage. Re-run setup.')
@@ -138,13 +144,13 @@ async function streamToResponse(stream: ReadableStream<Uint8Array>, res: express
   }
 }
 
-app.get('/', (_req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ ok: true, configured: Boolean(readStoredKey()), maxFileSizeMB: MAX_FILE_SIZE_MB })
 })
 
 app.get('/setup', async (_req, res) => {
   try {
-    if (readStoredKey()) return res.send(page(`<p>Stache is already configured.</p>${button('http://localhost:5173', 'Open Stache', true)}`))
+    if (readStoredKey()) return res.send(page(`<p>Stache is already configured.</p>${button('/', 'Open Stache', true)}`))
     const approvalUrl = await ensureSetupStarted()
     res.send(page(`<p>1. Click approve. Sia Storage opens in a new page.</p><p>${button(approvalUrl, 'Approve Stache', true)}</p><p>2. After approval, come back here and click finish.</p><p>${button('/setup/finish', 'Finish setup')}</p><p style="color:#6b6255;">No copying or pasting needed.</p>`))
   } catch (err) {
@@ -164,7 +170,7 @@ app.get('/setup/reset', (_req, res) => {
 app.get('/setup/finish', async (_req, res) => {
   try {
     await finishSetup()
-    res.send(page(`<p>Stache is configured.</p>${button('http://localhost:5173', 'Open Stache', true)}`))
+    res.send(page(`<p>Stache is configured.</p>${button('/', 'Open Stache', true)}`))
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Setup finish failed'
     res.status(500).send(page(`<p style="color:#8a1f11;font-weight:800;">${message}</p>${button('/setup', 'Back to setup')}${button('/setup/reset', 'Start over')}`))
@@ -217,6 +223,11 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   const message = err instanceof Error ? err.message : 'Server error'
   res.status(500).json({ error: message })
 })
+
+if (existsSync(DIST_DIR)) {
+  app.use(express.static(DIST_DIR))
+  app.get('*', (_req, res) => res.sendFile(path.join(DIST_DIR, 'index.html')))
+}
 
 const PORT = Number(process.env.PORT || 3001)
 app.listen(PORT, () => {
