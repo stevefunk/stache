@@ -54,6 +54,20 @@ function appMeta() {
   }
 }
 
+function setupPage(body: string) {
+  return `<!doctype html><html><head><title>Stache Setup</title><meta name="viewport" content="width=device-width, initial-scale=1" /></head><body style="font-family:system-ui,sans-serif;max-width:720px;margin:64px auto;padding:24px;background:#faf7ef;color:#171717;"><h1>Stache setup</h1>${body}</body></html>`
+}
+
+async function finishSetup() {
+  if (!pendingBuilder) throw new Error('No setup in progress. Start setup first.')
+  await pendingBuilder.waitForApproval()
+  const sdk = await pendingBuilder.register(generateRecoveryPhrase())
+  const appKey = bytesToHex(sdk.appKey().export())
+  writeStoredKey(appKey)
+  cachedSdk = sdk
+  pendingBuilder = null
+}
+
 async function getSdk() {
   if (cachedSdk) return cachedSdk
 
@@ -75,28 +89,35 @@ app.get('/', (_req, res) => {
 
 app.get('/setup/start', async (_req, res) => {
   try {
+    if (readStoredKey()) {
+      return res.send(setupPage('<p>Stache is already configured.</p><p><a href="http://localhost:5173">Open Stache</a></p>'))
+    }
+
     await initSia()
     pendingBuilder = new Builder(INDEXER_URL, appMeta())
     await pendingBuilder.requestConnection()
-    res.json({ approvalUrl: pendingBuilder.responseUrl() })
+    const approvalUrl = pendingBuilder.responseUrl()
+
+    res.send(setupPage(`<p>Step 1: approve Stache in Sia Storage.</p><p><a style="display:inline-block;background:#171717;color:white;padding:12px 18px;border-radius:999px;text-decoration:none;font-weight:800;" href="${approvalUrl}" target="_blank">Approve Stache</a></p><p>Step 2: after approval, come back here and click finish.</p><p><a style="display:inline-block;border:1px solid #171717;color:#171717;padding:12px 18px;border-radius:999px;text-decoration:none;font-weight:800;" href="/setup/finish">Finish setup</a></p>`))
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Setup failed'
-    res.status(500).json({ error: message })
+    res.status(500).send(setupPage(`<p style="color:#8a1f11;font-weight:800;">${message}</p>`))
+  }
+})
+
+app.get('/setup/finish', async (_req, res) => {
+  try {
+    await finishSetup()
+    res.send(setupPage('<p>Stache is configured.</p><p><a href="http://localhost:5173">Open Stache</a></p>'))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Setup finish failed'
+    res.status(500).send(setupPage(`<p style="color:#8a1f11;font-weight:800;">${message}</p><p><a href="/setup/start">Start setup again</a></p>`))
   }
 })
 
 app.post('/setup/finish', async (_req, res) => {
   try {
-    if (!pendingBuilder) {
-      return res.status(400).json({ error: 'No setup in progress. Start setup first.' })
-    }
-
-    await pendingBuilder.waitForApproval()
-    const sdk = await pendingBuilder.register(generateRecoveryPhrase())
-    const appKey = bytesToHex(sdk.appKey().export())
-    writeStoredKey(appKey)
-    cachedSdk = sdk
-    pendingBuilder = null
+    await finishSetup()
     res.json({ ok: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Setup finish failed'
