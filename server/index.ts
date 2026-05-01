@@ -15,6 +15,7 @@ const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 const app = express()
 const upload = multer({ limits: { fileSize: MAX_FILE_SIZE_BYTES } })
 let pendingBuilder: Builder | null = null
+let pendingApprovalUrl = ''
 let cachedSdk: any = null
 
 app.use(cors())
@@ -54,28 +55,38 @@ function appMeta() {
   }
 }
 
-function setupPage(body: string) {
+function page(body: string) {
   return `<!doctype html><html><head><title>Stache Setup</title><meta name="viewport" content="width=device-width, initial-scale=1" /></head><body style="font-family:system-ui,sans-serif;max-width:720px;margin:64px auto;padding:24px;background:#faf7ef;color:#171717;"><h1>Stache setup</h1>${body}</body></html>`
 }
 
+function button(href: string, text: string, dark = false) {
+  return `<a style="display:inline-block;${dark ? 'background:#171717;color:white;' : 'border:1px solid #171717;color:#171717;'}padding:12px 18px;border-radius:999px;text-decoration:none;font-weight:800;margin:6px;" href="${href}">${text}</a>`
+}
+
+async function ensureSetupStarted() {
+  if (pendingBuilder && pendingApprovalUrl) return pendingApprovalUrl
+  await initSia()
+  pendingBuilder = new Builder(INDEXER_URL, appMeta())
+  await pendingBuilder.requestConnection()
+  pendingApprovalUrl = pendingBuilder.responseUrl()
+  return pendingApprovalUrl
+}
+
 async function finishSetup() {
-  if (!pendingBuilder) throw new Error('No setup in progress. Start setup first.')
+  if (!pendingBuilder) throw new Error('No setup in progress. Click Start over below.')
   await pendingBuilder.waitForApproval()
   const sdk = await pendingBuilder.register(generateRecoveryPhrase())
   const appKey = bytesToHex(sdk.appKey().export())
   writeStoredKey(appKey)
   cachedSdk = sdk
   pendingBuilder = null
+  pendingApprovalUrl = ''
 }
 
 async function getSdk() {
   if (cachedSdk) return cachedSdk
-
   const appKey = readStoredKey()
-  if (!appKey) {
-    throw new Error('Stache needs one-time owner setup. Visit http://localhost:3001/setup/start first.')
-  }
-
+  if (!appKey) throw new Error('Stache needs one-time owner setup. Visit http://localhost:3001/setup first.')
   await initSia()
   const sdk = await new Builder(INDEXER_URL, appMeta()).connected(new AppKey(hexToBytes(appKey)))
   if (!sdk) throw new Error('Could not reconnect Stache to Sia Storage. Re-run setup.')
@@ -87,60 +98,45 @@ app.get('/', (_req, res) => {
   res.json({ ok: true, configured: Boolean(readStoredKey()), maxFileSizeMB: MAX_FILE_SIZE_MB })
 })
 
-app.get('/setup/start', async (_req, res) => {
+app.get('/setup', async (_req, res) => {
   try {
     if (readStoredKey()) {
-      return res.send(setupPage('<p>Stache is already configured.</p><p><a href="http://localhost:5173">Open Stache</a></p>'))
+      return res.send(page(`<p>Stache is already configured.</p>${button('http://localhost:5173', 'Open Stache', true)}`))
     }
-
-    await initSia()
-    pendingBuilder = new Builder(INDEXER_URL, appMeta())
-    await pendingBuilder.requestConnection()
-    const approvalUrl = pendingBuilder.responseUrl()
-
-    res.send(setupPage(`<p>Step 1: approve Stache in Sia Storage.</p><p><a style="display:inline-block;background:#171717;color:white;padding:12px 18px;border-radius:999px;text-decoration:none;font-weight:800;" href="${approvalUrl}" target="_blank">Approve Stache</a></p><p>Step 2: after approval, come back here and click finish.</p><p><a style="display:inline-block;border:1px solid #171717;color:#171717;padding:12px 18px;border-radius:999px;text-decoration:none;font-weight:800;" href="/setup/finish">Finish setup</a></p>`))
+    const approvalUrl = await ensureSetupStarted()
+    res.send(page(`<p>1. Click approve. Sia Storage opens in a new page.</p><p>${button(approvalUrl, 'Approve Stache', true)}</p><p>2. After approval, come back here and click finish.</p><p>${button('/setup/finish', 'Finish setup')}</p><p style="color:#6b6255;">No copying or pasting needed.</p>`))
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Setup failed'
-    res.status(500).send(setupPage(`<p style="color:#8a1f11;font-weight:800;">${message}</p>`))
+    res.status(500).send(page(`<p style="color:#8a1f11;font-weight:800;">${message}</p>${button('/setup/reset', 'Start over')}`))
   }
+})
+
+app.get('/setup/start', (_req, res) => res.redirect('/setup'))
+
+app.get('/setup/reset', (_req, res) => {
+  pendingBuilder = null
+  pendingApprovalUrl = ''
+  res.redirect('/setup')
 })
 
 app.get('/setup/finish', async (_req, res) => {
   try {
     await finishSetup()
-    res.send(setupPage('<p>Stache is configured.</p><p><a href="http://localhost:5173">Open Stache</a></p>'))
+    res.send(page(`<p>Stache is configured.</p>${button('http://localhost:5173', 'Open Stache', true)}`))
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Setup finish failed'
-    res.status(500).send(setupPage(`<p style="color:#8a1f11;font-weight:800;">${message}</p><p><a href="/setup/start">Start setup again</a></p>`))
-  }
-})
-
-app.post('/setup/finish', async (_req, res) => {
-  try {
-    await finishSetup()
-    res.json({ ok: true })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Setup finish failed'
-    res.status(500).json({ error: message })
+    res.status(500).send(page(`<p style="color:#8a1f11;font-weight:800;">${message}</p>${button('/setup', 'Back to setup')}${button('/setup/reset', 'Start over')}`))
   }
 })
 
 app.post('/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' })
-
     const sdk = await getSdk()
     const stream = nodeReadableToWeb(Readable.from(req.file.buffer))
-    const object = await sdk.upload(new PinnedObject(), stream, {
-      maxInflight: 15,
-      dataShards: 10,
-      parityShards: 20,
-    })
-
+    const object = await sdk.upload(new PinnedObject(), stream, { maxInflight: 15, dataShards: 10, parityShards: 20 })
     await sdk.pinObject(object)
-
     const url = await sdk.shareObject(object, new Date(Date.now() + 1000 * 60 * 60 * 24 * 365))
-
     return res.json({ id: object.id().toString(), url: url.toString() })
   } catch (err) {
     console.error(err)
@@ -150,9 +146,7 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 })
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({ error: `File is too large. Max size is ${MAX_FILE_SIZE_MB} MB.` })
-  }
+  if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: `File is too large. Max size is ${MAX_FILE_SIZE_MB} MB.` })
   const message = err instanceof Error ? err.message : 'Server error'
   res.status(500).json({ error: message })
 })
@@ -160,7 +154,5 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 const PORT = Number(process.env.PORT || 3001)
 app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`)
-  if (!readStoredKey()) {
-    console.log(`One-time Stache owner setup: http://localhost:${PORT}/setup/start`)
-  }
+  if (!readStoredKey()) console.log(`One-time Stache owner setup: http://localhost:${PORT}/setup`)
 })
