@@ -1,7 +1,7 @@
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element not found')
 
-const API_URL = 'http://localhost:3001'
+const API_URL = ''
 
 root.innerHTML = `
   <main style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#faf7ef;color:#171717;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px;">
