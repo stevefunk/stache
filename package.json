@@ -9,7 +9,7 @@
     "dev:api": "tsx server/index.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "tsx server/index.ts"
+    "start": "npm run build && tsx server/index.ts"
   },
   "dependencies": {
     "@siafoundation/sia-storage": "^0.0.9",
